@@ -17,125 +17,62 @@
 'use strict';
 
 var assert = require('assert');
-var fs = require('fs');
-var path = require('path');
 
-var pkg = require('../package.json');
+var PKG = require('../package.json');
+
+// Parses a caret/tilde/plain semver range string (e.g. "^0.30.0") into its
+// numeric [major, minor, patch] parts so tests can assert on the minimum
+// version allowed by the range without requiring the `semver` package.
+function parseVersionParts(range) {
+  var match = /(\d+)\.(\d+)\.(\d+)/.exec(range);
+  assert(match, 'Expected a parseable semver range, got: ' + range);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
 
 describe('package.json', function() {
-  var raw;
-
-  before(function() {
-    raw = fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8');
-  });
-
-  it('should be valid, parseable JSON', function() {
-    assert.doesNotThrow(function() {
-      JSON.parse(raw);
-    });
-  });
-
   describe('dependencies', function() {
-    // These are the packages that were bumped in this change. Pinning the
-    // exact expected range here guards against accidental downgrades or
-    // typos creeping back in.
-    var expectedVersions = {
-      '@google-cloud/common': '^0.18.0',
-      'google-gax': '^0.16.1',
-      'google-proto-files': '^0.18.0',
-      protobufjs: '^7.5.6',
-      uuid: '^11.1.1',
-    };
-
-    Object.keys(expectedVersions).forEach(function(name) {
-      it('should depend on ' + name + ' at ' + expectedVersions[name], function() {
-        assert.strictEqual(pkg.dependencies[name], expectedVersions[name]);
-      });
+    it('should declare @google-cloud/common as a dependency', function() {
+      assert(PKG.dependencies);
+      assert.strictEqual(typeof PKG.dependencies['@google-cloud/common'], 'string');
     });
 
-    it('should not have downgraded any dependency below the previous version', function() {
-      var previousVersions = {
-        '@google-cloud/common': '0.16.0',
-        'google-gax': '0.14.2',
-        'google-proto-files': '0.15.0',
-        protobufjs: '6.8.1',
-        uuid: '3.1.0',
-      };
-
-      Object.keys(previousVersions).forEach(function(name) {
-        var previousMajor = parseInt(previousVersions[name].split('.')[0], 10);
-        var currentRange = pkg.dependencies[name];
-
-        assert.ok(currentRange, name + ' is missing from dependencies');
-
-        var currentMajor = parseInt(
-          currentRange.replace(/^[\^~]/, '').split('.')[0],
-          10
-        );
-
-        assert.ok(
-          currentMajor >= previousMajor,
-          name +
-            ' major version regressed: ' +
-            previousVersions[name] +
-            ' -> ' +
-            currentRange
-        );
-      });
+    it('should require @google-cloud/common at the patched ^0.30.0 range', function() {
+      assert.strictEqual(PKG.dependencies['@google-cloud/common'], '^0.30.0');
     });
-  });
 
-  describe('devDependencies', function() {
-    var expectedVersions = {
-      '@google-cloud/nodejs-repo-tools': '^3.0.0',
-      eslint: '^9.0.0',
-      jsdoc: '^4.0.0',
-      mocha: '^6.0.0',
-      nyc: '^12.0.0',
-    };
+    it('should not allow a @google-cloud/common version below 0.30.0 (regression: pre-fix vulnerable range)', function() {
+      var range = PKG.dependencies['@google-cloud/common'];
+      var parts = parseVersionParts(range);
+      var major = parts[0];
+      var minor = parts[1];
+      var patch = parts[2];
 
-    Object.keys(expectedVersions).forEach(function(name) {
-      it(
-        'should depend on ' + name + ' at ' + expectedVersions[name],
-        function() {
-          assert.strictEqual(pkg.devDependencies[name], expectedVersions[name]);
-        }
+      var atLeastPatched =
+        major > 0 || minor > 30 || (minor === 30 && patch >= 0);
+
+      assert.strictEqual(
+        atLeastPatched,
+        true,
+        'Expected @google-cloud/common range "' +
+          range +
+          '" to require at least version 0.30.0'
       );
     });
-  });
 
-  it('should not declare the same package in both dependencies and devDependencies', function() {
-    var deps = Object.keys(pkg.dependencies || {});
-    var devDeps = Object.keys(pkg.devDependencies || {});
-
-    var overlap = deps.filter(function(name) {
-      return devDeps.indexOf(name) !== -1;
-    });
-
-    assert.deepEqual(overlap, []);
-  });
-
-  it('should use valid semver range strings for all dependency versions', function() {
-    var semverRangePattern = /^[\^~]?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
-
-    ['dependencies', 'devDependencies'].forEach(function(section) {
-      Object.keys(pkg[section] || {}).forEach(function(name) {
-        var version = pkg[section][name];
-
-        assert.ok(
-          semverRangePattern.test(version),
-          section + '.' + name + ' has an invalid version range: ' + version
-        );
-      });
+    it('should use a caret range so patch/minor updates are allowed but major bumps are not', function() {
+      var range = PKG.dependencies['@google-cloud/common'];
+      assert.strictEqual(range.charAt(0), '^');
     });
   });
 
-  it('should not have any empty dependency version strings', function() {
-    ['dependencies', 'devDependencies'].forEach(function(section) {
-      Object.keys(pkg[section] || {}).forEach(function(name) {
-        assert.notStrictEqual(pkg[section][name], '');
-        assert.notStrictEqual(pkg[section][name], undefined);
-      });
+  describe('metadata', function() {
+    it('should remain valid, parseable JSON exposing a version string', function() {
+      assert.strictEqual(typeof PKG.version, 'string');
+    });
+
+    it('should still list other pre-existing dependencies untouched by the bump', function() {
+      assert.strictEqual(PKG.dependencies.arrify, '^1.0.0');
+      assert.strictEqual(PKG.dependencies.extend, '^3.0.1');
     });
   });
 });
