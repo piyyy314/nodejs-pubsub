@@ -25,14 +25,32 @@ test(`should be valid, parseable JSON`, t => {
   t.notThrows(() => JSON.parse(fs.readFileSync(pkgPath, `utf8`)));
 });
 
-test(`should pin @google-cloud/pubsub to the patched 0.20.0 version`, t => {
+test(`should pin @google-cloud/pubsub to the patched 0.29.0 version`, t => {
   const pkg = require(pkgPath);
-  t.is(pkg.dependencies[`@google-cloud/pubsub`], `0.20.0`);
+  t.is(pkg.dependencies[`@google-cloud/pubsub`], `0.29.0`);
 });
 
 test(`should not depend on the vulnerable 0.16.3 version of @google-cloud/pubsub`, t => {
   const pkg = require(pkgPath);
   t.not(pkg.dependencies[`@google-cloud/pubsub`], `0.16.3`);
+});
+
+test(`should not depend on the previously pinned 0.20.0 version of @google-cloud/pubsub`, t => {
+  const pkg = require(pkgPath);
+  t.not(pkg.dependencies[`@google-cloud/pubsub`], `0.20.0`);
+});
+
+test(`should depend on a @google-cloud/pubsub version at or above 0.29.0`, t => {
+  const pkg = require(pkgPath);
+  const version = pkg.dependencies[`@google-cloud/pubsub`];
+  const [major, minor, patch] = version.split(`.`).map(Number);
+
+  const meetsMinimum =
+    major > 0 ||
+    minor > 29 ||
+    (minor === 29 && patch >= 0);
+
+  t.true(meetsMinimum);
 });
 
 test(`should declare @google-cloud/pubsub as an exact (non-range) semver version`, t => {
